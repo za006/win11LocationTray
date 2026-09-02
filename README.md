@@ -1,5 +1,6 @@
 # 测试一个win11下的位置注册表托盘控制 代码基于Proxy Tray
 
+2026制作 原程序是代理托盘控制程序https://github.com/Lingxi-Li/ProxyTray
 A Windows tray app that monitors WinINet proxy settings for LAN (not VPN) and enables quick proxy on/off switch.
 
 - A blue/yellow tray icon indicates proxy off/on status, respectively.
