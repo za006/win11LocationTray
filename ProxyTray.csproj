@@ -6,8 +6,8 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{C48AFB87-3942-40AF-BE7C-7D9F7E508458}</ProjectGuid>
     <OutputType>WinExe</OutputType>
-    <RootNamespace>ProxyTray</RootNamespace>
-    <AssemblyName>ProxyTray</AssemblyName>
+    <RootNamespace>win11LocationTray</RootNamespace>
+    <AssemblyName>WZTray</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
