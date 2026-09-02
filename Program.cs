@@ -1,7 +1,6 @@
 using System;
 using System.Diagnostics;
 using System.Drawing;
-using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
@@ -9,21 +8,21 @@ namespace win11LocationTray
 {
     static class Proxy
     {
-        private const string RegistrySubKey = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location";
+        private const string RegistrySubKey = @"SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location";
         private const string RegistryValueName = "Value";
 
         public static bool IsOn()
         {
             try
             {
-                using (var key = Registry.CurrentUser.OpenSubKey(RegistrySubKey, false))
+
+                using (var key = Registry.LocalMachine.OpenSubKey(RegistrySubKey, false))
                 {
                     if (key != null)
                     {
                         object val = key.GetValue(RegistryValueName);
                         if (val != null)
                         {
-
                             return val.ToString().Equals("Allow", StringComparison.OrdinalIgnoreCase);
                         }
                     }
@@ -33,29 +32,39 @@ namespace win11LocationTray
             return false;
         }
 
-
         public static void Toggle()
         {
             try
             {
                 bool currentState = IsOn();
-                
-                string targetValue = currentState ? "Deny" : "Allow";
 
-                using (var key = Registry.CurrentUser.OpenSubKey(RegistrySubKey, true))
+                ProcessStartInfo psi = new ProcessStartInfo();
+                psi.FileName = "SystemSettingsAdminFlows.exe";
+
+                psi.Arguments = "SetCamSystemGlobal 1 " + (currentState ? "0" : "1");
+                psi.Verb = "runas"; // 触发 Windows 正常的管理员提权提示
+                psi.CreateNoWindow = true;
+                psi.UseShellExecute = true;
+
+                Process p = Process.Start(psi);
+                if (p != null)
+                {
+                    p.WaitForExit(); // 等待切换完成
+                }
+
+                using (var key = Registry.LocalMachine.OpenSubKey(RegistrySubKey, true))
                 {
                     if (key != null)
                     {
+                        string targetValue = currentState ? "Deny" : "Allow";
                         key.SetValue(RegistryValueName, targetValue, RegistryValueKind.String);
                     }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"修改定位注册表失败: {ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                MessageBox.Show("修改定位状态失败，请确保授予了管理员权限: " + ex.Message, "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
-
-
         }
     }
 
@@ -71,7 +80,6 @@ namespace win11LocationTray
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
-
             try
             {
                 _iconOn = new Icon("ProxyOn.ico");
@@ -85,8 +93,7 @@ namespace win11LocationTray
 
             _trayIcon = new NotifyIcon
             {
-                ContextMenu = new ContextMenu(new[]
-                {
+                ContextMenu = new ContextMenu(new MenuItem[] {
                     new MenuItem("定位设置 (Settings)", OpenSettings),
                     new MenuItem("-"),
                     new MenuItem("退出 (Quit)", Quit)
@@ -103,7 +110,8 @@ namespace win11LocationTray
 
         private static void TrayIcon_Click(object sender, EventArgs e)
         {
-            if (e is MouseEventArgs mouseArgs && mouseArgs.Button != MouseButtons.Left)
+            MouseEventArgs mouseArgs = e as MouseEventArgs;
+            if (mouseArgs != null && mouseArgs.Button != MouseButtons.Left)
                 return;
 
             Proxy.Toggle();
@@ -114,9 +122,8 @@ namespace win11LocationTray
         private static void UpdateTrayState()
         {
             bool isOn = Proxy.IsOn();
-            
-            _trayIcon.Icon = isOn ? _iconOn : _iconOff;
 
+            _trayIcon.Icon = isOn ? _iconOn : _iconOff;
             _trayIcon.Text = isOn ? "系统定位：已开启 (Allow)" : "系统定位：已关闭 (Deny)";
         }
 
@@ -124,7 +131,6 @@ namespace win11LocationTray
         {
             try
             {
-
                 Process.Start(new ProcessStartInfo
                 {
                     FileName = "cmd.exe",
