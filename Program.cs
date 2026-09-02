@@ -1,105 +1,146 @@
-﻿using Microsoft.Win32;
 using System;
 using System.Diagnostics;
 using System.Drawing;
-using System.Management;
-using System.Security.Principal;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
+using Microsoft.Win32;
 
-namespace ProxyTray
+namespace win11LocationTray
 {
-    internal static class Program
+    static class Proxy
     {
-        const string KeyPath = @"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
-        static readonly string StatusChangeEventQuery = (
-            "SELECT * FROM RegistryValueChangeEvent WHERE " +
-            $"Hive = 'HKEY_USERS' AND KeyPath = '{WindowsIdentity.GetCurrent().User.Value}\\{KeyPath}' " +
-            "AND (ValueName = 'ProxyEnable' or ValueName = 'ProxyServer')"
-            ).Replace(@"\", @"\\");
-        const string None = "<None>";
+        private const string RegistrySubKey = @"Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location";
+        private const string RegistryValueName = "Value";
 
-        static Icon ProxyOnIcon;
-        static Icon ProxyOffIcon;
-        static NotifyIcon Tray;
-
-        static bool ProxyEnable;
-        static string ProxyServer;
-
-        static void Initialize()
-        {
-            ProxyOnIcon = new Icon("ProxyOn.ico");
-            ProxyOffIcon = new Icon("ProxyOff.ico");
-
-            Application.EnableVisualStyles();
-            Application.SetCompatibleTextRenderingDefault(false);
-        }
-
-        static void CreateTray()
-        {
-            var settingItem = new MenuItem
-            {
-                Index = 0,
-                Text = "Proxy Setting"
-            };
-            settingItem.Click += (sender, e) => Process.Start("ms-settings:network-proxy");
-            var menuItem = new MenuItem
-            {
-                Index = 1,
-                Text = "Quit"
-            };
-            menuItem.Click += (sender, e) => Application.Exit();
-            Tray = new NotifyIcon
-            {
-                ContextMenu = new ContextMenu(new[] { settingItem, menuItem }),
-                Visible = true
-            };
-            Tray.MouseClick += (sender, e) =>
-            {
-                if (e.Button != MouseButtons.Left) return;
-                if (ProxyServer == None)
-                {
-                    MessageBox.Show("'ProxyServer' not configured");
-                    Process.Start("ms-settings:network-proxy");
-                    return;
-                }
-                using (var key = Registry.CurrentUser.OpenSubKey(KeyPath, true))
-                {
-                    key.SetValue("ProxyEnable", ProxyEnable ? 0 : 1);
-                }
-            };
-        }
-
-        static void RefreshTray()
-        {
-            using (var key = Registry.CurrentUser.OpenSubKey(KeyPath))
-            {
-                ProxyEnable = (int)(key.GetValue("ProxyEnable", 0)) != 0;
-                ProxyServer = (string)(key.GetValue("ProxyServer", None));
-            }
-            Tray.Icon = ProxyEnable ? ProxyOnIcon : ProxyOffIcon;
-            Tray.Text = ProxyEnable ? ProxyServer : "Direct";
-        }
-
-        [STAThread]
-        static void Main()
+        public static bool IsOn()
         {
             try
             {
-                Initialize();
-                CreateTray();
-                RefreshTray();
-
-                using (var watcher = new ManagementEventWatcher(StatusChangeEventQuery))
+                using (var key = Registry.CurrentUser.OpenSubKey(RegistrySubKey, false))
                 {
-                    watcher.EventArrived += (sender, e) => RefreshTray();
-                    watcher.Start();
-                    Application.Run();
+                    if (key != null)
+                    {
+                        object val = key.GetValue(RegistryValueName);
+                        if (val != null)
+                        {
+
+                            return val.ToString().Equals("Allow", StringComparison.OrdinalIgnoreCase);
+                        }
+                    }
+                }
+            }
+            catch { }
+            return false;
+        }
+
+
+        public static void Toggle()
+        {
+            try
+            {
+                bool currentState = IsOn();
+                
+                string targetValue = currentState ? "Deny" : "Allow";
+
+                using (var key = Registry.CurrentUser.OpenSubKey(RegistrySubKey, true))
+                {
+                    if (key != null)
+                    {
+                        key.SetValue(RegistryValueName, targetValue, RegistryValueKind.String);
+                    }
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show(ex.ToString());
+                MessageBox.Show($"修改定位注册表失败: {ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+
+
+        }
+    }
+
+    static class Program
+    {
+        private static NotifyIcon _trayIcon;
+        private static Icon _iconOn;
+        private static Icon _iconOff;
+
+        [STAThread]
+        static void Main()
+        {
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+
+
+            try
+            {
+                _iconOn = new Icon("ProxyOn.ico");
+                _iconOff = new Icon("ProxyOff.ico");
+            }
+            catch
+            {
+                _iconOn = SystemIcons.Information;
+                _iconOff = SystemIcons.Application;
+            }
+
+            _trayIcon = new NotifyIcon
+            {
+                ContextMenu = new ContextMenu(new[]
+                {
+                    new MenuItem("定位设置 (Settings)", OpenSettings),
+                    new MenuItem("-"),
+                    new MenuItem("退出 (Quit)", Quit)
+                }),
+                Visible = true
+            };
+
+            _trayIcon.Click += TrayIcon_Click;
+
+            UpdateTrayState();
+
+            Application.Run();
+        }
+
+        private static void TrayIcon_Click(object sender, EventArgs e)
+        {
+            if (e is MouseEventArgs mouseArgs && mouseArgs.Button != MouseButtons.Left)
+                return;
+
+            Proxy.Toggle();
+
+            UpdateTrayState();
+        }
+
+        private static void UpdateTrayState()
+        {
+            bool isOn = Proxy.IsOn();
+            
+            _trayIcon.Icon = isOn ? _iconOn : _iconOff;
+
+            _trayIcon.Text = isOn ? "系统定位：已开启 (Allow)" : "系统定位：已关闭 (Deny)";
+        }
+
+        private static void OpenSettings(object sender, EventArgs e)
+        {
+            try
+            {
+
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "cmd.exe",
+                    Arguments = "/c start ms-settings:privacy-location",
+                    CreateNoWindow = true,
+                    UseShellExecute = true
+                });
+            }
+            catch { }
+        }
+
+        private static void Quit(object sender, EventArgs e)
+        {
+            _trayIcon.Visible = false;
+            _trayIcon.Dispose();
+            Application.Exit();
         }
     }
 }
