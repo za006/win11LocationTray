@@ -1,4 +1,4 @@
-# Proxy Tray
+# 测试一个win11下的位置注册表托盘控制 代码基于Proxy Tray
 
 A Windows tray app that monitors WinINet proxy settings for LAN (not VPN) and enables quick proxy on/off switch.
 
